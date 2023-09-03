@@ -1,2 +1,2 @@
 # cotacoes
- Adquira o valor de qualquer cotação totalmente atualizado
+Veja o valor de qualquer cotação totalmente atualizada
