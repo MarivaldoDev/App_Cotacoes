@@ -1,47 +1,56 @@
-from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from PySimpleGUI import PySimpleGUI as sg
+import yfinance
+from decouple import config
+from langchain.agents import create_tool_calling_agent
+from langchain.agents.agent import AgentExecutor
+from langchain.tools import tool
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_groq import ChatGroq
 
 
-def buscar_cotacao(cotacao):
-    servico = Service(ChromeDriverManager().install())
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
+@tool
+def buscar_cotacao(cotacao: str) -> float:
+    """Retorna a cotação da moeda informada. Porém você deve informar a sigla da moeda de acordo o padrão do yahoofinance, por exemplo: USDBRL=X, EURBRL=X, BTC-USD, GC=F"""
+    dados = yfinance.Ticker(f"{cotacao}").info
+    cotacao_atual = dados["regularMarketPrice"]
 
-    navegador = webdriver.Chrome(options=chrome_options, service=servico)
-    navegador.get(f'https://www.google.com/search?q=cotação+{cotacao}')
-    try:
-        valor = navegador.find_element(By.XPATH, '//*[@id="knowledge-currency__updatable-data-column"]/div[1]/div[2]/span[1]').get_attribute('data-value')
-    except:
-        return 0
-    else:
-        return float(valor)
+    return f"R$ {cotacao_atual:.2f}"
 
-sg.theme("Reddit")
-# Layout
-layout = [
-    [sg.Text("Cotação"), sg.Input(key="cotação", size=(20, 1))],
-    [sg.Button("Buscar")],
-    [sg.Text(" ", key="mensagem")],
+
+api_key = config("API_KEY")
+llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=api_key)
+
+
+cotacao = str(input("Qual a cotação que você deseja consultar: ")).strip().lower()
+mensagens = [
+    (
+        "system",
+        (
+            "Você é um assistente especializado em cotações de moedas, especificamente da plataforma yahoofinace. "
+            "Sua tarefa é fornecer a cotação atual da moeda solicitada pelo usuário. "
+            "Utilize a ferramenta 'buscar_cotacao' para obter a cotação correta. "
+            "Lembre-se de sempre responder de forma clara e objetiva."
+            "Se a cotação for uma 'ação', sempre adicione o '.SA' ao final da sigla da ação para buscar a cotação correta, e não coloque o 'BRL=X' ao final."
+        ),
+    ),
 ]
 
-# janela
-janela = sg.Window("Pegador de cotações", layout)
+comando = f"Me informe a cotação atual da moeda {cotacao}."
+mensagens.append(("human", comando))
 
-# ler os eventos
-while True:
-    eventos, valores = janela.read()
-    if eventos == sg.WINDOW_CLOSED:
-        break
-    elif eventos == "Buscar":
-        cotacao = valores["cotação"]
-        resultado = buscar_cotacao(cotacao)
-        if resultado == 0:
-            janela["mensagem"].update("Apenas aceitamos cotações!")
-        else:
-            janela["mensagem"].update(f"A cotação do {cotacao} está R$ {resultado:.2f}")
+mensagens.append(MessagesPlaceholder(variable_name="agent_scratchpad"))
 
-janela.close()
+prompt = ChatPromptTemplate.from_messages(mensagens)
+
+
+tools = [buscar_cotacao]
+
+agent = create_tool_calling_agent(llm, tools, prompt)
+executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=tools, verbose=True)
+
+try:
+    resposta = executor.invoke(
+        {"input": comando} 
+    )
+    print(resposta["output"])
+except Exception as e:
+    print(f"[Erro ao executar agente]: {e}")
