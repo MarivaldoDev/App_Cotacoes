@@ -68,8 +68,6 @@ class App:
         return f"R$ {cotacao_atual:.2f}"
 
     def agente_ia(self):
-    # Atualiza o label existente em vez de destruí-lo — mantém a configuração
-    # de wraplength (quebra automática de linha) para evitar overflow.
         mensagens = [
             (
                 "system",
@@ -101,8 +99,6 @@ class App:
         try:
             resposta = executor.invoke({"input": comando})
             saida = resposta["output"]
-            # Atualiza o texto do label já existente; o wraplength evita que o texto
-            # ultrapasse a largura do frame.
             self.resultado.configure(text=saida)
         except Exception as e:
             print(f"[Erro ao executar agente]: {e}")
